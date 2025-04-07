@@ -132,3 +132,8 @@ You can combine these techniques to daisy-chain as many displays as you want, bo
 This document ended up being a bit longer than I anticipated, but I hope that it has managed to convey all of the necessary technical information about driving these displays (and other displays like them) adequately.
 
 If you have any further questions, you can contact me directly at [samyarsadat@gigawhat.net](mailto:samyarsadat@gigawhat.net) or [open a GitHub issue](../../issues).
+
+<br>
+
+Copyright © 2025 Samyar Sadat Akhavi.\
+Written by Samyar Sadat Akhavi, 07/04/2025.
