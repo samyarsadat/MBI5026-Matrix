@@ -1,5 +1,5 @@
 > [!WARNING]
-> This write-up is W.I.P. and unfinished. There may be typos, grammatical errors or factual errors. It has not been properly proof-read.
+> This write-up is still unfinished. There may be typos, grammatical errors or factual errors. It has not been thoroughly proofread.
 
 > [!NOTE]
 > Diagrams will be added soon to help clarify some points.
@@ -30,9 +30,12 @@ These discoveries made it clear to me that there must have been some kind of con
 
 ## Driving the Displays
 ### Hardware
+> [!NOTE]
+> The displays are designed to operate at +5V DC, which is also the typical operating voltage of the `MBI5026`. The operating voltage for all other components mentioned here is also +5V DC.
+
 With all of this information in hand, I devised a simple circuit to drive these displays using the Arduino UNO R3 (ATMega328P). The circuit consists of 16 P-channel MOSFETs for driving the anodes of the matrices. As mentioned before, the anodes of the displays are linked together in rows, and these displays have 16 rows; hence, we need 16 MOSFETs.
 
-Now, after we consider the SPI connections for the `MBI5026`s, we aren't left with the 16 pins we need to drive the MOSFETs, but we also don't really need 16 pins. It would be a waste to connect all MOSFETs directly anyway, as we don't need to be able to activate them two-at-a-time, instead, we can use a 16-channel multiplexer.
+Now, after we consider the `MBI5026` connections, we aren't left with the 16 pins we need to drive the MOSFETs, but we also don't really need 16 pins. It would be a waste to connect all MOSFETs directly anyway, as we don't need to be able to activate them two-at-a-time, instead, we can use a 16-channel multiplexer.
 
 I chose the `74HC4067`, as it's one I was already familiar with, and it had decent specifications for this application. The `74HC4067` is a 16-channel analog multiplexer, but any 16-channel mux with good enough switching characteristics will do just fine; it doesn't even have to be an analog mux, as we're only controlling MOSFETs.
 
@@ -61,9 +64,12 @@ The software uses PlatformIO and is written in C++. I opted to use Adafruit's GF
 
 Instead, I focused on optimizing the lower-level details of driving the display (taking data from a set of pixel buffers, one for red and one for green, and displaying them properly). It was a rather enjoyable experience, as I got to chase down millisecond-level improvements in execution time, which is a level of optimization I often don't or can't pursue. 
 
-I will, by no means, claim to have written the _most_ optimized driver for these displays, but I certainly made an attempt, even performing direct register manipulations to avoid function call overhead at some points!
+I will, by no means, claim to have written the _most_ optimized driver for these displays, but I certainly made an attempt, even performing direct register manipulations (I understand the portability implications this comes with, but that really does not matter here) to avoid function call overhead at some points!
 
-In the example I've provided, all of the text "rendering" takes place during the setup phase of the program. This introduces a challenge when one tries to implement scrolling text. Re-rendering the pixel buffer every scroll cycle is very expensive (CPU cycles-wise, and hence, time-wise) and so results in a lot of flickering.
+In the example I've provided, all of the text "rendering" takes place during the setup phase of the program. This introduces a challenge when one tries to implement scrolling text. Re-rendering the pixel buffer on every scroll cycle is very expensive (CPU cycles-wise, and hence, time-wise) and so results in a lot of flickering.
+
+<a name="display-flicker-1"></a>
+But why would the display flicker, you may ask. Well, imagine that the pixel data is re-computed every n frames. That means that every n-frames, the frame draw function will take much longer to execute because it needs to re-compute the pixel data. This introduces a (or rather increases the already existing) gap in time where nothing is drawn on the screen, every n frames. That extra delay appears as a flicker every time the display scrolls over by one pixel.
 
 You could simply use a more powerful microcontroller to solve this issue, such as the RP2040/RP2350 from Raspberry Pi or even a microcontroller from the STM32 series (such as the STM32F103, for example), but that would be cheating! Not that this is a competition, but still, what fun would that have been?
 
@@ -74,6 +80,8 @@ Also, the scrolling offset counter is incremented by a hardware timer interrupt.
 Now, there is _some_ extra overhead compared to just displaying a static view, but it's _significantly_ less than shifting the cursor position and re-computing the pixel data on every scroll cycle. The maximum width for our "extended buffer" is only 256 pixels, however, so whatever it is that we want to scroll must fit within those 256 pixels.
 
 This limitation arises from the maximum limit of an unsigned 8-bit integer (255), as you may have noticed. Theoretically, we can expand the buffer beyond this by changing some variable types to 16-bit unsigned integers, and I did try this; however, using 16-bit variables results in many operations taking more CPU cycles (as the ATMega328P is an 8-bit processor with 8-bit wide registers and an 8-bit ALU, and so operations that would take a single instruction with 8-bit variables take more with 16-bit ones), which results in more flickering.
+
+Note that the cause of this flicker is slightly different in comparison to the one mentioned [here](#display-flicker-1).
 
 To explain why longer execution times result in flickering, I must first explain how the driver code works in greater detail. Here are the tasks performed by the program when drawing a single frame, in the order in which they are completed:
  - Interrupts are disabled to prevent the scroll offset from being incremented during a frame draw, which would result in tearing.
@@ -90,15 +98,19 @@ To explain why longer execution times result in flickering, I must first explain
    - Wait for 850 microseconds. If we don't wait here, the program will continue to the next iteration of the loop immediately, turning off the row we just turned on, which would make the display very dim for obvious reasons.
  - Enable interrupts again to allow for the scroll counter to be incremented by the timer ISR.
 
-[EXPLAIN FLICKERING]
+Now, as you can see, we have to retrieve data from the buffers when drawing each row. The variables we would have to change for extending the buffer would affect this operation. Another important fact is that all LEDs are held off as data is retrieved from the buffers and sent to the display.
 
-Although do note that flickering caused by longer execution times can be alleviated to a certain degree by reducing `display_row_on_delay_us`, though this will also result in a dimmer display and so may not be desirable.
+The extra time it takes to retrieve and send data for each row results in the LEDs being off for longer as each row is drawn, which appears as flickering.
+
+Now, we can decrease `display_row_on_delay_us` (the time for which the LEDs of each row are held on) so that rows take less time to draw, which will help alleviate this flickering to a certain degree, but it will also make the display much dimmer.
+
+Thinking about it now, in retrospect, this issue might be resolvable. If we keep the pervious row on while retrieving data for the current row and only turn the previous row off before sending data to the 'MBI5026`s, the LEDs won't be held off for as long. Now, row draws will still take longer, but at least the LED on-time percentage will be higher, which might allow us to decrease `display_row_on_delay_us` without sacrificing much brightness. I have not tried this yet though.
 
 In the above explanation, I state that 5 bytes of data are sent to the `MBI5026`s for every row. This is not completely true. As you may know, each `MBI5026` has 16 outputs, and so would logically require 2 bytes of data (16 / 8 = 2 bytes); however, our display is 40 pixels wide, which would only require 5 bytes of data (40 / 8 = 5 bytes). Now, because 40 isn't a multiple of 16, 8 channels of one of the `MBI5026`s remain unconnected.
 
 So whilst only 5 bytes of data is actually used for each row, in reality, we must send an extra empty byte to fill the shift register bits for the unconnected 8 channels. This empty byte is the first byte sent, as the unconnected channels on this display are the last 8 channels of the first `MBI5026`, which corresponds to the first byte of data sent (data in the shift register is propagated from last to first).
 
-And just as a side note, daisy-chaining of `MBI5026`s (well, shift registers in general) is possible because when receiving data, the shift registers fill all of their bits and forward any extra bits to the next shift register in line over their SDO/DO (Serial Data Out/Data Out) pin. The SDO of one shift register is connected to the SDI of the next one in line.
+And just as a side note, daisy-chaining of `MBI5026`s is possible because of how shift registers work (the `MBI5026` is just a shift register with some extra circuitry for driving LEDs). When a pulse is sent over their clock pin, they shift all of the bits currently in the register over by one position and fill their first bit (which is emptied as a result of the shift) with whatever is on the Data In pin when the pulse is received (either a 1 or a 0). And what happens to the last bit in the shift register? Well, it gets shifted to the Data Out pin, where it can be shifted on to the first bit of the next shift register in line (assuming that the Data Out pin is connected to the Data In pin of another shift register and that they share a clock pin).
 
 <br>
 
@@ -136,4 +148,4 @@ If you have any further questions, you can contact me directly at [samyarsadat@g
 <br>
 
 Copyright © 2025 Samyar Sadat Akhavi.\
-Written by Samyar Sadat Akhavi, 07/04/2025.
+Written by Samyar Sadat Akhavi, 30/04/2025.
