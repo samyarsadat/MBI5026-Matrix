@@ -104,7 +104,7 @@ The extra time it takes to retrieve and send data for each row results in the LE
 
 Now, we can decrease `display_row_on_delay_us` (the time for which the LEDs of each row are held on) so that rows take less time to draw, which will help alleviate this flickering to a certain degree, but it will also make the display much dimmer.
 
-Thinking about it now, in retrospect, this issue might be resolvable. If we keep the pervious row on while retrieving data for the current row and only turn the previous row off before sending data to the 'MBI5026`s, the LEDs won't be held off for as long. Now, row draws will still take longer, but at least the LED on-time percentage will be higher, which might allow us to decrease `display_row_on_delay_us` without sacrificing much brightness. I have not tried this yet though.
+Thinking about it now, in retrospect, this issue might be resolvable. If we keep the pervious row on while retrieving data for the current row and only turn the previous row off before sending data to the `MBI5026`s, the LEDs won't be held off for as long. Now, row draws will still take longer, but at least the LED on-time percentage will be higher, which might allow us to decrease `display_row_on_delay_us` without sacrificing much brightness. I have not tried this yet though.
 
 In the above explanation, I state that 5 bytes of data are sent to the `MBI5026`s for every row. This is not completely true. As you may know, each `MBI5026` has 16 outputs, and so would logically require 2 bytes of data (16 / 8 = 2 bytes); however, our display is 40 pixels wide, which would only require 5 bytes of data (40 / 8 = 5 bytes). Now, because 40 isn't a multiple of 16, 8 channels of one of the `MBI5026`s remain unconnected.
 
