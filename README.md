@@ -7,7 +7,7 @@
 ![back of display module](diagrams/module_back.jpg)
 ![front of display module](diagrams/module_front.jpg)
 
-In November 2023, I got my hands on a number of 16x40 LED matrix displays produced by a company called "Enforma". There was no documentation provided with these displays, but they had RJ-11 connectors on their backs labeled `RS-485`. This gave me hope, at first, as it implied that no driver circuitry was needed and that I only needed to send data to the displays over a serial connection.
+In November 2023, I got my hands on a number of 16x40 LED matrix displays produced by a company called "Enforma". There was no documentation provided with these displays, but they had RJ-11 connectors on their backs labeled `RS485`. This gave me hope, at first, as it implied that no driver circuitry was needed and that I only needed to send data to the displays over a serial connection.
 
 <p align="center">
   <img src="diagrams/module_back_rj11.jpg" width="20%">
