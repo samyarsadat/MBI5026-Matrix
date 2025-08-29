@@ -134,7 +134,7 @@ _This is issue no longer exists in the latest firmware revision. The buffer can 
 _This flicker can be eliminated by adjusting (reducing) `display_row_on_delay_us` in the code. I will leave this explanation of all of the tasks that are performed when drawing a single frame, as it may be useful:_
  - Interrupts are disabled to prevent the scroll offset from being incremented during a frame draw, which would result in tearing.
  - For each of the 16 rows, the following operations are repeated:
-   - **[GREEN GROUP]** Read 5 bytes from the buffer into a temporary buffer, taking into account the scroll offset if scrolling is enabled.
+   - **[GREEN GROUP]** Read (5 * number of horizontally chained modules) bytes from the buffer into a temporary buffer, taking into account the scroll offset if scrolling is enabled.
    - **[RED GROUP]** Same as above, but for the red group.
    - Disable both `MBI5026` groups (`OE`s set high), turning the currently active row off (the previous row, unless the current row is 0, in which case it would be the last row).
    - Set the mux output address to the address of our current row (the address determines which one of the 16 channels is connected through to the mux's IO pin).
@@ -157,7 +157,7 @@ Now, we can decrease `display_row_on_delay_us` (the time for which the LEDs of e
 
 _After testing, I have found that keeping the previous row on while data for the current row is being retrieved improves flickering, as well as perceived display brightness. This allows us to adjust (reduce) `display_row_on_delay_us` to compensate for the extra time that it may take for data to be read from the display buffers without sacrificing much brightness and reducing display flicker to negligible levels._
 
-In the above explanation, I state that 5 bytes of data are sent to the `MBI5026`s for every row. This is not completely true. As you may know, each `MBI5026` has 16 outputs, and so would logically require 2 bytes of data (16 / 8 = 2 bytes); however, our display is 40 pixels wide, which would only require 5 bytes of data (40 / 8 = 5 bytes). Now, because 40 isn't a multiple of 16, 8 channels of one of the `MBI5026`s remain unconnected.
+In the above explanation, I state that 5 bytes of data are sent to the `MBI5026`s for every row (per module). This is not completely true. As you may know, each `MBI5026` has 16 outputs, and so would logically require 2 bytes of data (16 / 8 = 2 bytes); however, our display is 40 pixels wide, which would only require 5 bytes of data (40 / 8 = 5 bytes). Now, because 40 isn't a multiple of 16, 8 channels of one of the `MBI5026`s remain unconnected.
 
 So whilst only 5 bytes of data is actually used for each row, in reality, we must send an extra empty byte to fill the shift register bits for the unconnected 8 channels. This empty byte is the first byte sent, as the unconnected channels on this display are the last 8 channels of the first `MBI5026`, which corresponds to the first byte of data sent (data in the shift register is propagated from last to first).
 
