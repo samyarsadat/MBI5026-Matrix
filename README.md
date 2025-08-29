@@ -123,32 +123,39 @@ Also, the scrolling offset counter is incremented by a hardware timer interrupt.
 
 Now, there is _some_ extra overhead compared to just displaying a static view, but it's _significantly_ less than shifting the cursor position and re-computing the pixel data on every scroll cycle. The maximum width for our "extended buffer" is only 256 pixels, however, so whatever it is that we want to scroll must fit within those 256 pixels.
 
-This limitation arises from the maximum limit of an unsigned 8-bit integer (255), as you may have noticed. Theoretically, we can expand the buffer beyond this by changing some variable types to 16-bit unsigned integers, and I did try this; however, using 16-bit variables results in many operations taking more CPU cycles (as the ATMega328P is an 8-bit processor with 8-bit wide registers and an 8-bit ALU, and so operations that would take a single instruction with 8-bit variables take more with 16-bit ones), which results in more flickering.
+This limitation arises from the maximum limit of an unsigned 8-bit integer (255), as you may have noticed. Theoretically, we can expand the buffer beyond this by changing some variable types to 16-bit unsigned integers, and I did try this; ~~however, using 16-bit variables results in many operations taking more CPU cycles (as the ATMega328P is an 8-bit processor with 8-bit wide registers and an 8-bit ALU, and so operations that would take a single instruction with 8-bit variables take more with 16-bit ones), which results in more flickering.~~
 
-Note that the cause of this flicker is slightly different in comparison to the one mentioned [here](#display-flicker-1).
+_This is issue no longer exists in the latest firmware revision. The buffer can now be up to 255 bytes (2040 pixels) wide, though that amount won't fit into the RAM of the ATMega328P. 400 pixels seems to be around the limit of what can fit, taking into account everything else in the program._
 
-To explain why longer execution times result in flickering, I must first explain how the driver code works in greater detail. Here are the tasks performed by the program when drawing a single frame, in the order in which they are completed:
+~~Note that the cause of this flicker is slightly different in comparison to the one mentioned [here](#display-flicker-1).~~
+
+~~To explain why longer execution times result in flickering, I must first explain how the driver code works in greater detail. Here are the tasks performed by the program when drawing a single frame, in the order in which they are completed:~~
+
+_This flicker can be eliminated by adjusting (reducing) `display_row_on_delay_us` in the code. I will leave this explanation of all of the tasks that are performed when drawing a single frame, as it may be useful:_
  - Interrupts are disabled to prevent the scroll offset from being incremented during a frame draw, which would result in tearing.
  - For each of the 16 rows, the following operations are repeated:
-   - Set the mux output (IO) pin to logic high, turning off the row that's currently on (the previous row, unless the current row is 0, in which case it would be the last row, 15).
-   - **[GREEN GROUP]** Read the 5 bytes (5 * 8 = 40 bits, which is the width of the display in pixels) required for display from the buffer, taking into account the scroll offset if scrolling is enabled.
-   - Send those 5 bytes to the `MBI5026`s over SPI.
-   - **[GREEN GROUP]** Pulse the latch pin, committing the data we just sent to the output buffers of the `MBI5026`s for this group.
-   - **[RED GROUP]** Read the 5 bytes required for display from the buffer, taking into account the scroll offset if scrolling is enabled.
-   - Send those 5 bytes to the `MBI5026`s over SPI.
-   - **[RED GROUP]** Pulse the latch pin, committing the data we just sent to the output buffers of the `MBI5026`s for this group.
+   - **[GREEN GROUP]** Read 5 bytes from the buffer into a temporary buffer, taking into account the scroll offset if scrolling is enabled.
+   - **[RED GROUP]** Same as above, but for the red group.
+   - Disable both `MBI5026` groups (`OE`s set high), turning the currently active row off (the previous row, unless the current row is 0, in which case it would be the last row).
    - Set the mux output address to the address of our current row (the address determines which one of the 16 channels is connected through to the mux's IO pin).
-   - Set the mux output (IO) pin to logic low, turning on the current row.
+   - Send the previously read bytes from the temporary **GREEN** buffer to the `MBI5026`s over SPI.
+   - **[GREEN GROUP]** Pulse the latch pin, committing the data we just sent to the output buffers of the `MBI5026`s for this group.
+   - **[GREEN GROUP]** Enable the `MBI5026`s by setting the `OE` pin low.
+   - Send the previously read bytes from the temporary **RED** buffer to the `MBI5026`s over SPI.
+   - **[RED GROUP]** Pulse the latch pin, committing the data we just sent to the output buffers of the `MBI5026`s for this group.
+   - **[RED GROUP]** Enable the `MBI5026`s by setting the `OE` pin low.
    - Wait for 850 microseconds. If we don't wait here, the program will continue to the next iteration of the loop immediately, turning off the row we just turned on, which would make the display very dim for obvious reasons.
  - Enable interrupts again to allow for the scroll counter to be incremented by the timer ISR.
 
-Now, as you can see, we have to retrieve data from the buffers when drawing each row. The variables we would have to change for extending the buffer would affect this operation. Another important fact is that all LEDs are held off as data is retrieved from the buffers and sent to the display.
+Now, as you can see, we have to retrieve data from the buffers when drawing each row. ~~The variables we would have to change for extending the buffer would affect this operation. Another important fact is that all LEDs are held off as data is retrieved from the buffers and sent to the display.~~
 
-The extra time it takes to retrieve and send data for each row results in the LEDs being off for longer as each row is drawn, which appears as flickering.
+~~The extra time it takes to retrieve and send data for each row results in the LEDs being off for longer as each row is drawn, which appears as flickering.~~
 
 Now, we can decrease `display_row_on_delay_us` (the time for which the LEDs of each row are held on) so that rows take less time to draw, which will help alleviate this flickering to a certain degree, but it will also make the display much dimmer.
 
-Thinking about it now, in retrospect, this issue might be resolvable. If we keep the pervious row on while retrieving data for the current row and only turn the previous row off before sending data to the `MBI5026`s, the LEDs won't be held off for as long. Now, row draws will still take longer, but at least the LED on-time percentage will be higher, which might allow us to decrease `display_row_on_delay_us` without sacrificing much brightness. I have not tried this yet though.
+~~Thinking about it now, in retrospect, this issue might be resolvable. If we keep the pervious row on while retrieving data for the current row and only turn the previous row off before sending data to the `MBI5026`s, the LEDs won't be held off for as long. Now, row draws will still take longer, but at least the LED on-time percentage will be higher, which might allow us to decrease `display_row_on_delay_us` without sacrificing much brightness. I have not tried this yet though.~~
+
+_After testing, I have found that keeping the previous row on while data for the current row is being retrieved improves flickering, as well as perceived display brightness. This allows us to adjust (reduce) `display_row_on_delay_us` to compensate for the extra time that it may take for data to be read from the display buffers without sacrificing much brightness and reducing display flicker to negligible levels._
 
 In the above explanation, I state that 5 bytes of data are sent to the `MBI5026`s for every row. This is not completely true. As you may know, each `MBI5026` has 16 outputs, and so would logically require 2 bytes of data (16 / 8 = 2 bytes); however, our display is 40 pixels wide, which would only require 5 bytes of data (40 / 8 = 5 bytes). Now, because 40 isn't a multiple of 16, 8 channels of one of the `MBI5026`s remain unconnected.
 
