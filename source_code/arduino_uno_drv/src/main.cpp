@@ -50,7 +50,7 @@
 #define scroll_timer_prescale  B00000101
 
 // SPI config
-#define spi_clk_frequency  8000000   // 8 MHz (max for ATMega328P @ 16 MHz, though MBI5026 can only do 25 MHz)
+#define spi_clk_frequency  8000000   // 8 MHz (max for ATMega328P @ 16 MHz, though MBI5026 can do 25 MHz)
 
 // GFX color definitions
 #define BLACK   0
