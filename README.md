@@ -42,7 +42,7 @@ With all of this information in hand, I devised a simple circuit to drive these 
 
 Now, after we consider the `MBI5026` connections, we aren't left with the 16 pins we need to drive the MOSFETs, but we also don't really need 16 pins. It would be a waste to connect all MOSFETs directly anyway, as we don't need to be able to activate them two-at-a-time, instead, we can use a 16-channel multiplexer.
 
-I chose the `74HC4067`, as it's one I was already familiar with, and it had decent specifications for this application. The `74HC4067` is a 16-channel analog multiplexer, but any 16-channel mux with good enough switching characteristics will do just fine; it doesn't even have to be an analog mux, as we're only controlling MOSFETs.
+I chose the `74HC4067`, as it's one I'm already familiar with, and it has decent specifications for this application. The `74HC4067` is a 16-channel analog multiplexer, but any 16-channel mux with good enough switching characteristics will do just fine; it doesn't even have to be an analog mux, as we're only controlling MOSFETs.
 
 Most P-channel MOSFETs will also work just fine, you could even use PNP transistors, and you'd probably be fine. As we're multiplexing the rows, each row is only held on for around 850 microseconds (you can change this by changing `display_row_on_delay_us` in the code), so there isn't any continuous current draw. The most amount of continuous current draw I observed when holding all pixels in one row on was no more than 400mA.
 
@@ -121,6 +121,8 @@ Now, there is _some_ extra overhead compared to just displaying a static view, b
 This limitation arises from the maximum limit of an unsigned 8-bit integer (255), as you may have noticed. Theoretically, we can expand the buffer beyond this by changing some variable types to 16-bit unsigned integers, and I did try this; ~~however, using 16-bit variables results in many operations taking more CPU cycles (as the ATMega328P is an 8-bit processor with 8-bit wide registers and an 8-bit ALU, and so operations that would take a single instruction with 8-bit variables take more with 16-bit ones), which results in more flickering.~~
 
 _This is issue no longer exists in the latest firmware revision. The buffer can now be up to 255 bytes (2040 pixels) wide, though that amount won't fit into the RAM of the ATMega328P. 400 pixels seems to be around the limit of what can fit, taking into account everything else in the program._
+
+_This has been made possible thanks to a number of major improvements and optimizations in the firmware, minimizing both the amount and impact of the extra CPU cycles needed for operations on 16-bit variables._
 
 ~~Note that the cause of this flicker is slightly different in comparison to the one mentioned [here](#display-flicker-1).~~
 
