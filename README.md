@@ -1,8 +1,3 @@
-> [!WARNING]
-> This write-up is still unfinished. There may be typos, grammatical errors or factual errors. It has not been thoroughly proofread..
-
-<br>
-
 # MBI5026 16x40 LED Display
 ![back of display module](diagrams/module_back.jpg)
 ![front of display module](diagrams/module_front.jpg)
