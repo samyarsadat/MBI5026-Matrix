@@ -8,35 +8,36 @@ In November 2023, I got my hands on a number of 16x40 LED matrix displays produc
   <img src="diagrams/module_back_rj11.jpg" width="20%">
 </p>
 
-Upon closer inspection, I found 6 ICs on the matrix PCBs. They were all labeled with `MBI5026GD`. After a quick Google search, I was able to find their datasheet. According to the datasheet, the `MBI5026` was a "16-bit constant-current LED sink driver". This tells us a lot about what these chips do, and it also indicated to me that there must be some kind of external control circuitry somewhere, but we will get to that later.
+Upon closer inspection, I found 6 ICs on the matrix PCBs. They were all labeled `MBI5026GD`. After a quick Google search, I was able to find their datasheet. According to the datasheet, the `MBI5026` is a "16-bit constant-current LED sink driver". This tells us a lot about what these chips do, and it also indicated to me that there must be some kind of external control circuitry somewhere, but we will get to that later.
 
 <br>
 
 ## The MBI5026
-An LED sink driver (or current-sink driver) is one of two main LED driver types (the other being source/current-source drivers). Electrical current is "sunk" to these drivers, as the name might suggest, and so their outputs are connected to the cathodes of the LEDs. The `MBI5026`, specifically, is also a constant-current LED driver, which means that it keeps the current flowing through the LEDs constant, regardless of the LED's bias voltage (the current is set using an external resistor attached to a dedicated pin on the IC).
+An LED sink driver (or current-sink driver) is one of two main LED driver types (the other being source/current-source drivers). Electrical current is "sunk" to these drivers, as the name might suggest (the direction of electron flow is from negative to positive, but I am referring to current flow), and so their outputs are connected to the cathodes of the LEDs. The `MBI5026`, specifically, is also a constant-current LED driver, which means that it keeps the current flowing through the LEDs constant, regardless of the LED's bias voltage (the current is set using an external resistor attached to a dedicated pin on the IC).
 
 Another important feature of these ICs is that they handle inputs serially, similar to a shift register. This makes it rather simple for them to be daisy-chained (as they are in this matrix), and it allows for a clever optimization when it comes to sending data to them using microcontrollers. The optimization in question is using the built-in SPI hardware to send data instead of bit-banging. This allows for data to be sent at much higher rates and, of course, frees up many CPU cycles, something we need a lot of.
 
-The LED matrix modules used are configured such that the cathodes of the LEDs are all attached to each other in columns. This means that our `MBI5026` ICs control the columns of the module. So the cathodes of all 16 LEDs in each column are connected to one output on one of the three (per color - one set for red, one set for green) `MBI5026`s.
+The LED matrix modules here are configured such that the cathodes of the LEDs are all attached to each other in columns. This means that our `MBI5026` ICs control the columns of the module. So the cathodes of all 16 LEDs in each column are connected to one output on one of the three (per color - one set for red, one set for green) `MBI5026`s.
 
-I haven't mentioned it until now, but yes, these displays use dual-color LED matrices (red and green). That is why we have 6 `MBI5026`s instead of 3 (3 * 16 = 48 outputs, which would've been enough for a single color, as the display only has 40 columns). Each group of 3 is responsible for one color. The LEDs are wired up like so:
+I haven't mentioned it until now, but yes, these displays use dual-color LED matrices (red and green). That is why we have 6 `MBI5026`s instead of 3 (3 * 16 = 48 outputs, which would've been enough for a single color, as the display only has 40 columns). Each group of 3 is responsible for one color. The LEDs are wired-up as shown below:
 
 <p align="center">
   <img src="diagrams/matrix_led_schem.png" width="75%">
 </p>
 
-Okay, now we can control the columns, but what about the rows? Well... that’s where things get a little bit more complicated. I mentioned above that I initially thought no extra control circuitry was needed for the display but that I was wrong, and I’d explain later. Later is now, so I shall explain.
+Okay, now we can control the columns, but what about the rows? Well... that’s where things get a little bit more complicated. I mentioned above that I initially thought no extra control circuitry was needed for the displays, but that I was mistaken. Well, let me explain why that is case.
 
-After finding out what the `MBI5026`s were, I tried to look for some type of current-source driver for the anodes of the LEDs, but I found none. Instead, I managed to trace the anodes of the displays to a pair of connectors on the back of the PCB. I also then traced two of the pins (data pins, as the other two were connected to GND and VCC) of the aforementioned RJ-11 to another connector on the back, and the data, clock, and latch pins of the `MBI5026`s to a fourth connector.
+After finding out what the `MBI5026`s were, I tried to look for some type of current-source driver for the anodes of the LEDs, but I found none. Instead, I managed to trace the anodes of the displays to a pair of headers on the back of the PCB. I then also traced two of the pins (data pins, as the other two were connected to GND and VCC) of the aforementioned RJ-11 connector to another header, and the data, clock, and latch pins of the `MBI5026`s to a fourth header.
 
-These discoveries made it clear to me that there must have been some kind of control board attached to this display PCB using those four connectors, and that that board contained the rest of the circuitry required for making the display work.
+These discoveries made it clear to me that there must have been some kind of control board attached to these display PCBs using those four connectors, and that that board contained the rest of the circuitry required for making the displays work.
 
 <br>
 
 ## Driving the Displays
 ### Hardware
 > [!NOTE]
-> The displays are designed to operate at +5V DC, which is also the typical operating voltage of the `MBI5026`. The operating voltage for all other components mentioned here is also +5V DC.
+> The displays are designed to operate at +5V DC, which is also the nominal operating voltage of the `MBI5026`. The operating voltage for all other components mentioned here is also +5V DC.
+<!--MARKER-->
 
 With all of this information in hand, I devised a simple circuit to drive these displays using the Arduino UNO R3 (ATMega328P). The circuit consists of 16 P-channel MOSFETs for driving the anodes of the matrices. As mentioned before, the anodes of the displays are linked together in rows, and these displays have 16 rows; hence, we need 16 MOSFETs.
 
