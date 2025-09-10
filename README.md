@@ -37,21 +37,20 @@ These discoveries made it clear to me that there must have been some kind of con
 ### Hardware
 > [!NOTE]
 > The displays are designed to operate at +5V DC, which is also the nominal operating voltage of the `MBI5026`. The operating voltage for all other components mentioned here is also +5V DC.
-<!--MARKER-->
 
 With all of this information in hand, I devised a simple circuit to drive these displays using the Arduino UNO R3 (ATMega328P). The circuit consists of 16 P-channel MOSFETs for driving the anodes of the matrices. As mentioned before, the anodes of the displays are linked together in rows, and these displays have 16 rows; hence, we need 16 MOSFETs.
 
-Now, after we consider the `MBI5026` connections, we aren't left with the 16 pins we need to drive the MOSFETs, but we also don't really need 16 pins. It would be a waste to connect all MOSFETs directly anyway, as we don't need to be able to activate them two-at-a-time, instead, we can use a 16-channel multiplexer.
+Now, after we consider the `MBI5026` connections, we aren't left with the 16 pins we need to drive the MOSFETs, but we also don't really need 16 pins. It would be a waste to connect all MOSFETs directly, as we don't need to be able to activate more than one MOSFET at once, instead, we can use a 16-channel multiplexer.
 
 I chose the `74HC4067`, as it's one I'm already familiar with, and it has decent specifications for this application. The `74HC4067` is a 16-channel analog multiplexer, but any 16-channel mux with good enough switching characteristics will do just fine; it doesn't even have to be an analog mux, as we're only controlling MOSFETs.
 
-Most P-channel MOSFETs will also work just fine, you could even use PNP transistors, and you'd probably be fine. As we're multiplexing the rows, each row is only held on for around 850 microseconds (you can change this by changing `display_row_on_delay_us` in the code), so there isn't any continuous current draw. The most amount of continuous current draw I observed when holding all pixels in one row on was no more than 400mA.
+Most P-channel MOSFETs will also work just fine, you could even use PNP transistors, and you'd probably be fine. As we're multiplexing the rows, each row is only held on for around less than a millisecond (typically, depends on buffer size, and `display_row_on_delay_us`), so there is little continous current draw. The most amount of continuous current draw I observed when holding all pixels in one row on was no more than 400mA.
 
 Note that there are 10k ohm pull-up resistors connected to the gate pins of every MOSFET to ensure that their outputs are turned off when left floating (which is the case, unless they're selected by the mux).
 
-As mentioned before, we'll be using the Arduino's SPI hardware for sending data to the `MBI5026`s. The six `MBI5026`s are divided into two groups of three, one group for red, and the other for green (the pixels are dual-color). Note that the anodes for the green and red LEDs are again connected to each other, so we still only need 16 MOSFETs for driving both colors. This works because their cathodes are connected to different `MBI5026`s, of course.
+As mentioned before, we'll be using the Arduino's SPI hardware for sending data to the `MBI5026`s. The six `MBI5026`s are divided into two groups of three, one group for red, and the other for green. Note that the anodes for the green and red LEDs are again connected to each other, so we still only need 16 MOSFETs for driving both colors. This works because their cathodes are connected to different `MBI5026`s, of course.
 
-As far as the cathodes are concerned, we can treat the display as two separate displays, one being the green, and the other red. But there's just one problem with this approach... the Arduino UNO R3 only has one set of SPI pins, not two. The solution to this problem is quite trivial. The `MBI5026`s, in addition to their SDI (Serial Data In) and CLK (Clock) pins, also have an LE (labeled as "Data Strobe Input Terminal" in the datasheet, but I presume it stands for Latch Enable) pin.
+As far as the cathodes are concerned, we can treat the display as two separate displays, one being the green, and the other red. But there's just one problem with this approach... the Arduino UNO R3 only has one set of SPI pins, not two (I have recently been made aware of the SPI over USART mode supported by the ATMega328P, though as you will see, that will not be necessary). The solution to this problem is quite trivial. The `MBI5026`s, in addition to their SDI (Serial Data In) and CLK (Clock) pins, also have an LE (labeled as "Data Strobe Input Terminal" in the datasheet, but I presume it stands for Latch Enable) pin.
 
 You see, data from the input shift register isn't "committed" to the output drivers of the `MBI5026` unless a pulse is sent on the LE pin. This is very handy, as we can connect the SDI and CLK pins of both `MBI5026` groups together, but still maintain the ability to separately control both colors.
 
@@ -66,7 +65,7 @@ Basically, what we can do is the following:
  - Send the data for the red group over the same SPI bus.
  - Pulse the LE pin of the red group, "committing" the desired red pixel states to the output drivers.
 
-These steps are repeated for each row, of course, as we are multiplexing the display one-row-at-a-time. More about the software implementation below.
+These steps are repeated for each row, of course, as we are multiplexing the display one-row-at-a-time. More about the software implementation later on.
 
 This is the full circuit diagram I ended up using for testing with the Arduino UNO:
 
@@ -92,7 +91,7 @@ This is the full circuit diagram I ended up using for testing with the Arduino U
 ### Software
 The software uses PlatformIO and is written in C++. I opted to use Adafruit's GFX library for text and graphics "rendering" (i.e., generating pixel data from text and/or shape drawing commands, etc.), as I saw no need to implement that myself when there's a perfectly usable and readily available implementation already.
 
-Instead, I focused on optimizing the lower-level details of driving the display (taking data from a set of pixel buffers, one for red and one for green, and displaying them properly). It was a rather enjoyable experience, as I got to chase down millisecond-level improvements in execution time, which is a level of optimization I often don't or can't pursue.
+Instead, I focused on optimizing the lower-level details of driving the displays (taking data from a set of pixel buffers, one for red and one for green, and displaying them properly). It was a rather enjoyable experience, as I got to chase down millisecond-level improvements in execution time, which is a level of optimization I often don't or can't pursue.
 
 I will, by no means, claim to have written the _most_ optimized driver for these displays, but I certainly made an attempt, even performing direct register manipulations (I understand the portability implications this comes with, but that really does not matter here) to avoid function call overhead at some points!
 
@@ -104,6 +103,8 @@ But why would the display flicker, you may ask. Well, imagine that the pixel dat
 You could simply use a more powerful microcontroller to solve this issue, such as the RP2040/RP2350 from Raspberry Pi or even a microcontroller from the STM32 series (such as the STM32F103, for example), but that would be cheating! Not that this is a competition, but still, what fun would that have been?
 
 So I devised a rather simple solution, one that I'm sure is used in some real LED display drivers as well... We can make our display buffers longer (width-wise) than the size of our actual displays, render the entirety of the contents we want to scroll on the display once at startup (and write it to the buffers, of course), and then simply shift our view of the buffer to the right by one pixel every n-milliseconds when actually displaying the contents on the screen.
+
+Below, you can see some diagrams explaining one full scroll cycle, as implemented right now.
 
 <br>
 
@@ -157,7 +158,7 @@ _After testing, I have found that keeping the previous row on while data for the
 
 In the above explanation, I state that 5 bytes of data are sent to the `MBI5026`s for every row (per module). This is not completely true. As you may know, each `MBI5026` has 16 outputs, and so would logically require 2 bytes of data (16 / 8 = 2 bytes); however, our display is 40 pixels wide, which would only require 5 bytes of data (40 / 8 = 5 bytes). Now, because 40 isn't a multiple of 16, 8 channels of one of the `MBI5026`s remain unconnected.
 
-So whilst only 5 bytes of data is actually used for each row, in reality, we must send an extra empty byte to fill the shift register bits for the unconnected 8 channels. This empty byte is the first byte sent, as the unconnected channels on this display are the last 8 channels of the first `MBI5026`, which corresponds to the first byte of data sent (data in the shift register is propagated from last to first).
+So whilst only 5 bytes of data is actually used for each row, in reality, we must send an extra, empty byte to fill the shift register bits of the unconnected 8 channels. This empty byte is the first byte sent, as the unconnected channels on this display are the last 8 channels of the first `MBI5026`, which corresponds to the first byte of data sent (data in the shift register is propagated from last to first).
 
 <br>
 
@@ -171,7 +172,7 @@ And just as a side note, daisy-chaining of `MBI5026`s is possible because of how
 <br>
 
 ## Driving More Than One Display
-Given all of the information I have presented until now, it would be very easy for someone to implement code for driving more than one of these displays at once (i.e., dasiy-chaining them vertically or horizontally); however, I would still like to explain how I would do it if I were to implement this, as I have given it some thought.
+Given all of the information I have presented until now, it should be very easy for someone to implement code for driving more than one of these displays at once (i.e., dasiy-chaining them vertically or horizontally); however, I would still like to explain how I would do it if I were to implement this, as I have given it some thought.
 
 <br>
 
@@ -185,7 +186,7 @@ Horizontally daisy-chaining these displays is quite trivial. All you need to do 
 
 <br>
 
-And of course, in the code you must send 12 bytes of data to the `MBI5026`s instead of 6 (10 effective data bytes instead of 5), and unless you extend the buffer, you can only daisy-chain up to 6 display modules (with 16 pixels to spare) because of the 256-bit buffer width limit.
+And of course, in the code you must send 12 bytes of data to the `MBI5026`s instead of 6 (10 effective data bytes instead of 5), ~~and unless you extend the buffer, you can only daisy-chain up to 6 display modules (with 16 pixels to spare) because of the 256-bit buffer width limit.~~
 
 Also note that the more data has to be read and sent, the more CPU cycles are required, so your mileage may vary in terms of the flickering and display performance. You must also take into consideration the current limit of your MOSFETs when adding additional display modules.
 
@@ -201,12 +202,12 @@ In terms of electrical connections, vertical daisy-chaining is identical to hori
 
 <br>
 
-The only difference is in the software. You have to make sure that the first 5 bytes of data sent are for the first row of the first module, and the second 5 bytes for the first row of the second module, and so on (ignoring the empty bytes here), and you must extend the display buffers vertically.
+The only difference is in the software. You have to make sure that the first 5 bytes of data sent are for the first row of the first module, and the second 5 bytes for the first row of the second module, and so on (ignoring the empty bytes here), and you must extend the display buffers vertically (or interleave the data and store it in a single, 16-pixel high buffer. The exact implementation is a matter of taste).
 
 <br>
 
 ### What About Both?
-You can combine these techniques to daisy-chain as many displays as you want, both vertically and horizontally, given that you have a sufficiently large display buffer and a sufficiently performant microcontroller.
+You can combine these techniques to daisy-chain as many displays as you want, both vertically and horizontally, assuming you have sufficiently large display buffers and a sufficiently performant microcontroller.
 
 <br>
 
@@ -219,12 +220,10 @@ You could, of course, use multiple SPI busses to send data to each row independe
 
 <br>
 
-## Conclusion
-This document ended up being a bit longer than I anticipated, but I hope that it has managed to convey all of the necessary technical information about driving these displays (and other displays like them) adequately.
-
+## Contact
 If you have any further questions, you can contact me directly at [samyarsadat@gigawhat.net](mailto:samyarsadat@gigawhat.net) or [open a GitHub issue](../../issues).
 
 <br>
 
 Copyright © 2025 Samyar Sadat Akhavi.\
-Written by Samyar Sadat Akhavi, 03/09/2025.
+Written by Samyar Sadat Akhavi, 10/09/2025.
